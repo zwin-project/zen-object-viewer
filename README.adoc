@@ -1,0 +1,25 @@
+= ZEN OBJECT VIEWER
+
+== Build & Install
+
+[source, shell]
+----
+$ git clone https://github.com/zigen-project/zen.git
+$ cd zen
+$ meson build
+$ ninja -C build install
+----
+
+== Run
+
+=== STL File viewer
+
+[source, shell]
+----
+$ zen-object-viewer [STL FILE]
+----
+
+[source, shell]
+----
+$ zen-object-viewer ./assets/teapot.stl
+----
