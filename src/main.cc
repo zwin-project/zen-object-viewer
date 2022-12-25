@@ -1,5 +1,6 @@
 #include <zukou.h>
 
+#include <linux/input.h>
 #include <sys/mman.h>
 
 #include <cstring>
@@ -45,7 +46,8 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
         vertex_shader(&system_),
         fragment_shader(&system_),
         program(&system_),
-        triangles_(triangles)
+        triangles_(triangles),
+        scale_(1.0f)
   {}
 
   bool Init(glm::vec3 half_size)
@@ -58,18 +60,50 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   void Configure(glm::vec3 half_size, uint32_t serial) override
   {
     if (!this->Render()) {
-      std::cerr << "rendering failed" << std::endl;
+      std::cerr << "rendering failed!" << std::endl;
       return;
     }
 
-    auto local_model = glm::scale(glm::mat4(1), half_size);
-    glm::vec4 color = {0, 0, 0, 0};
+    auto scale_matrix = glm::scale(glm::mat4(1), glm::vec3(1.0f / scale_));
+    auto local_model = scale_matrix * glm::scale(glm::mat4(1), half_size);
     base_technique.Uniform(0, "local_model", local_model);
-    base_technique.Uniform(0, "color", color);
+    base_technique.Uniform(0, "focus_color_diff", glm::vec3(0));
+
+    zukou::Region region(&system_);
+    if (!region.Init()) {
+      std::cerr << "region init failed!" << std::endl;
+      return;
+    }
+
+    region.AddCuboid(half_size, glm::vec3(0), glm::quat(glm::vec3(0)));
+
+    bounded_.SetRegion(&region);
 
     bounded_.AckConfigure(serial);
     bounded_.Commit();
   }
+
+  void RayEnter(uint32_t /*serial*/, zukou::VirtualObject * /*virtual_object*/,
+      glm::vec3 /*origin*/, glm::vec3 /*direction*/) override
+  {
+    base_technique.Uniform(0, "focus_color_diff", glm::vec3(0.1));
+    bounded_.Commit();
+  };
+
+  void RayLeave(
+      uint32_t /*serial*/, zukou::VirtualObject * /*virtual_object*/) override
+  {
+    base_technique.Uniform(0, "focus_color_diff", glm::vec3(0));
+    bounded_.Commit();
+  };
+
+  void RayButton(uint32_t serial, uint32_t /*time*/, uint32_t button,
+      bool pressed) override
+  {
+    if (button == BTN_LEFT && pressed) {
+      bounded_.Move(serial);
+    }
+  };
 
   bool Run() { return system_.Run(); }
 
@@ -77,7 +111,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   zukou::System system_;
   zukou::Bounded bounded_;
 
- private:
   zukou::ShmPool pool;
   zukou::RenderingUnit rendering_unit;
   zukou::GlBaseTechnique base_technique;
@@ -94,29 +127,31 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 
   std::vector<StlTriangle> *triangles_;
 
+  float scale_;
+  glm::vec3 center_ = {0, 0, 0};  // center of gravity
+
  private:
   bool Render()
   {
     std::vector<Vertex> vertices;
-    vertices.reserve(triangles_->size() * 3);
     {
-      float max_norm = 0;
-      for (auto triangle : *triangles_) {
-        for (int i = 0; i < 3; i++) {
-          float *p = triangle.points[i];
-          max_norm = std::max(
-              max_norm, std::sqrt(p[0] * p[0] + p[1] * p[1] + p[2] * p[2]));
-        }
-      }
+      vertices.reserve(triangles_->size() * 3);
 
       for (auto triangle : *triangles_) {
         float *n = triangle.n;
         for (int i = 0; i < 3; i++) {
           float *p = triangle.points[i];
-          vertices.push_back(Vertex(
-              glm::vec3(p[0] / max_norm, p[2] / max_norm, -p[1] / max_norm),
-              glm::vec3(n[0], n[2], -n[1])));
+          auto point = glm::vec3(p[0], p[2], -p[1]);
+
+          vertices.push_back(Vertex(point, glm::vec3(n[0], n[2], -n[1])));
+          center_ += point;
         }
+      }
+      center_ /= vertices.size();
+
+      for (auto &vertex : vertices) {
+        vertex.point -= center_;
+        scale_ = std::max(scale_, glm::length(vertex.point));
       }
     }
 
@@ -242,6 +277,5 @@ main(int argc, char const *argv[])
     return EXIT_FAILURE;
   }
 
-  std::cout << "start running" << std::endl;
   return viewer.Run();
 }
