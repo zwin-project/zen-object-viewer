@@ -34,6 +34,8 @@ pkgconfig = import('pkgconfig')
 
 textify = files('tools/textify.sh')[0]
 
+public_inc = include_directories('include')
+
 configure_file(
   output: 'config.h',
   configuration: cdata,
