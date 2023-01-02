@@ -18,18 +18,6 @@
 #include "gltf.vertex.h"
 #include "tiny_gltf.h"
 
-static void
-print_mat4(glm::mat4 mat)
-{
-  for (int i = 0; i < 4; ++i) {
-    for (int j = 0; j < 4; ++j) {
-      std::cout << mat[i][j] << " ";
-    }
-    std::cout << std::endl;
-  }
-  std::cout << std::endl;
-}
-
 class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 {
  public:
@@ -37,7 +25,7 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       : system_(this),
         bounded_(&system_, this),
         pool_(&system_),
-        vertex_array_(&system_),
+        // vertex_array_(&system_),
         vertex_shader_(&system_),
         fragment_shader_(&system_),
         program_(&system_),
@@ -105,8 +93,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   std::unordered_map<int, zukou::Buffer *> vertex_buffer_map_;
   std::unordered_map<int, zukou::GlBuffer *> gl_vertex_buffer_map_;
 
-  zukou::GlVertexArray vertex_array_;
-
   zukou::GlShader vertex_shader_;
   zukou::GlShader fragment_shader_;
   zukou::GlProgram program_;
@@ -118,7 +104,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
  private:
   glm::mat4 CalculateLocalModel()
   {
-    // TODO: 計算結果を保持したstackを作る
     glm::mat4 value(1);
     for (auto matrix : matrix_stack_) {
       value *= matrix;
@@ -152,15 +137,11 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       munmap(buffer_data, pool_size);
     }
 
-    if (!vertex_array_.Init()) return false;
     if (!vertex_shader_.Init(GL_VERTEX_SHADER, gltf_vertex_shader_source))
       return false;
     if (!fragment_shader_.Init(GL_FRAGMENT_SHADER, gltf_fragment_shader_source))
       return false;
     if (!program_.Init()) return false;
-
-    // if (!rendering_unit_.Init(&bounded_)) return false;
-    // if (!base_technique_.Init(&rendering_unit_)) return false;
 
     program_.AttachShader(&vertex_shader_);
     program_.AttachShader(&fragment_shader_);
@@ -245,26 +226,18 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       // TODO: row major? column major?
       matrix_stack_.push_back(glm::make_mat4(node.matrix.data()));
     } else {
-      // TODO: 一個ずつ行列が正しいかどうかをチェックする
-      // TODO: 行列をかける順番（iterateの順）がおかしくないかチェックする
       glm::mat4 mat(1);
-
-      std::cout << node.name << std::endl;
 
       if (node.translation.size() == 3) {
         glm::mat4 T = glm::translate(
             glm::mat4(1), glm::vec3(node.translation[0], node.translation[1],
                               node.translation[2]));
-        std::cout << "T" << std::endl;
-        print_mat4(T);
         mat *= T;
       }
 
       if (node.rotation.size() == 4) {
         glm::mat4 R = glm::toMat4(glm::quat(node.rotation[0], node.rotation[1],
             node.rotation[2], node.rotation[3]));
-        std::cout << "R" << std::endl;
-        print_mat4(R);
         mat *= R;
       }
 
@@ -272,12 +245,8 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
         glm::mat4 S = glm::scale(glm::mat4(1),
             glm::vec3(std::abs(node.scale[0]), std::abs(node.scale[1]),
                 std::abs(node.scale[2])));
-        std::cout << "S" << std::endl;
-        print_mat4(S);
         mat *= S;
       }
-
-      // print_mat4(mat);
 
       matrix_stack_.push_back(mat);
     }
@@ -298,6 +267,12 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   void RenderMesh(
       const tinygltf::Mesh &mesh, zukou::GlBaseTechnique *base_technique)
   {
+    zukou::GlVertexArray *vertex_array = new zukou::GlVertexArray(&system_);
+    if (!vertex_array->Init()) {
+      std::cerr << "Failed to initialize vertex_array" << std::endl;
+      return;
+    }
+
     for (size_t i = 0; i < mesh.primitives.size(); ++i) {
       const tinygltf::Primitive &primitive = mesh.primitives[i];
 
@@ -332,8 +307,10 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
           location = 0;
         else if (attribute == "NORMAL")
           location = 1;
-        else
+        else if (attribute == "TEXCOORD_0")
           location = 2;
+        else
+          assert(0);
 
         // compute byteStride from accessor + bufferView.
         int byteStride =
@@ -341,11 +318,11 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
         assert(byteStride != -1);
 
         assert(gl_vertex_buffer_map_.count(accessor.bufferView) > 0);
-        vertex_array_.Enable(location);
-        vertex_array_.VertexAttribPointer(location, size,
+        vertex_array->VertexAttribPointer(location, size,
             accessor.componentType, accessor.normalized ? GL_TRUE : GL_FALSE,
             byteStride, accessor.byteOffset,
             gl_vertex_buffer_map_[accessor.bufferView]);
+        vertex_array->Enable(location);
         // unnecessary vertex_array
       }
 
@@ -381,7 +358,7 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
           gl_vertex_buffer_map_[indexAccessor.bufferView]);
     }
 
-    base_technique->Bind(&vertex_array_);
+    base_technique->Bind(vertex_array);
     base_technique->Bind(&program_);
     base_technique->Uniform(0, "local_model", CalculateLocalModel());
     bounded_.Commit();
