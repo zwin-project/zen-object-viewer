@@ -16,12 +16,26 @@ $ ninja -C build install
 
 [source, shell]
 ----
-$ zen-object-viewer [STL FILE]
+$ zen-stl-viewer [STL FILE]
 ----
 
 [source, shell]
 ----
-$ zen-object-viewer ./assets/teapot.stl
+$ zen-stl-viewer ./assets/teapot.stl
+----
+
+You can move the model by `left click + motion`
+
+=== glTF File viewer
+
+[source, shell]
+----
+$ zen-gltf-viewer [STL FILE]
+----
+
+[source, shell]
+----
+$ zen-gltf-viewer ./assets/roof/roof.gltf
 ----
 
 You can move the model by `left click + motion`
