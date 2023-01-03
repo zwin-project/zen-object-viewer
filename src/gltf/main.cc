@@ -52,8 +52,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
     bounded_.AckConfigure(serial);
 
     matrix_stack_.push_back(glm::scale(glm::mat4(1), half_size));
-    // base_technique_.Uniform(0, "local_model", CalculateLocalModel());
-    // base_technique_.Uniform(0, "focus_color_diff", glm::vec3(0));
 
     this->RenderScene();
 
@@ -63,14 +61,12 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   void RayEnter(uint32_t /*serial*/, zukou::VirtualObject * /*virtual_object*/,
       glm::vec3 /*origin*/, glm::vec3 /*direction*/) override
   {
-    // base_technique_.Uniform(0, "focus_color_diff", glm::vec3(0.1));
     bounded_.Commit();
   };
 
   void RayLeave(
       uint32_t /*serial*/, zukou::VirtualObject * /*virtual_object*/) override
   {
-    // base_technique_.Uniform(0, "focus_color_diff", glm::vec3(0));
     bounded_.Commit();
   };
 
@@ -93,7 +89,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   std::unordered_map<std::string, zukou::RenderingUnit *> rendering_unit_map_;
   std::unordered_map<std::string, zukou::GlBaseTechnique *> base_technique_map_;
 
-  std::unordered_map<int, zukou::Buffer *> vertex_buffer_map_;
   std::unordered_map<int, zukou::GlBuffer *> gl_vertex_buffer_map_;
 
   zukou::GlShader vertex_shader_;
@@ -186,21 +181,20 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       }
 
       zukou::Buffer *zBuffer = new zukou::Buffer();
-      vertex_buffer_map_.emplace(i, zBuffer);
-      if (!vertex_buffer_map_[i]->Init(
+      if (!zBuffer->Init(
               &pool_, bufferView.byteOffset, bufferView.byteLength)) {
         std::cerr << "Failed to initialize vertex buffer" << std::endl;
         return false;
       }
 
       zukou::GlBuffer *zGlBuffer = new zukou::GlBuffer(&system_);
-      gl_vertex_buffer_map_.emplace(i, zGlBuffer);
+      gl_vertex_buffer_map_[i] = zGlBuffer;
       if (!gl_vertex_buffer_map_[i]->Init()) {
         std::cerr << "Failed to initialize gl vertex buffer" << std::endl;
         return false;
       }
       gl_vertex_buffer_map_[i]->Data(
-          bufferView.target, vertex_buffer_map_[i], GL_STATIC_DRAW);
+          bufferView.target, zBuffer, GL_STATIC_DRAW);
     }
 
     for (auto texture : model_->textures) {
@@ -233,22 +227,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 
   void RenderNode(const tinygltf::Node &node)
   {
-    zukou::RenderingUnit *rendering_unit = new zukou::RenderingUnit(&system_);
-    zukou::GlBaseTechnique *base_technique =
-        new zukou::GlBaseTechnique(&system_);
-
-    if (!rendering_unit->Init(&bounded_)) {
-      std::cerr << "Failed to initialize rendering_unit" << std::endl;
-      return;
-    }
-    rendering_unit_map_.emplace(node.name, rendering_unit);
-
-    if (!base_technique->Init(rendering_unit)) {
-      std::cerr << "Failed to initialize base_technique" << std::endl;
-      return;
-    }
-    base_technique_map_.emplace(node.name, base_technique);
-
     if (node.matrix.size() == 16) {
       // TODO: row major? column major?
       matrix_stack_.push_back(glm::make_mat4(node.matrix.data()));
@@ -263,15 +241,14 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       }
 
       if (node.rotation.size() == 4) {
-        glm::mat4 R = glm::toMat4(glm::quat(node.rotation[0], node.rotation[1],
-            node.rotation[2], node.rotation[3]));
+        glm::mat4 R = glm::toMat4(glm::quat(node.rotation[3], node.rotation[0],
+            node.rotation[1], node.rotation[2]));
         mat *= R;
       }
 
       if (node.scale.size() == 3) {
         glm::mat4 S = glm::scale(glm::mat4(1),
-            glm::vec3(std::abs(node.scale[0]), std::abs(node.scale[1]),
-                std::abs(node.scale[2])));
+            glm::vec3(node.scale[0], node.scale[1], node.scale[2]));
         mat *= S;
       }
 
@@ -280,7 +257,7 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 
     if (node.mesh > -1) {
       assert(node.mesh < (int)model_->meshes.size());
-      this->RenderMesh(model_->meshes[node.mesh], base_technique);
+      this->RenderMesh(model_->meshes[node.mesh]);
     }
 
     for (size_t i = 0; i < node.children.size(); i++) {
@@ -291,25 +268,35 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
     matrix_stack_.pop_back();
   }
 
-  void RenderMesh(
-      const tinygltf::Mesh &mesh, zukou::GlBaseTechnique *base_technique)
+  void RenderMesh(const tinygltf::Mesh &mesh)
   {
-    std::cout << "[";
-    std::cout << mesh.name;
-    std::cout << "]";
-    std::cout << std::endl;
-    zukou::GlVertexArray *vertex_array = new zukou::GlVertexArray(&system_);
-    if (!vertex_array->Init()) {
-      std::cerr << "Failed to initialize vertex_array" << std::endl;
-      return;
-    }
-
     for (size_t i = 0; i < mesh.primitives.size(); ++i) {
+      zukou::RenderingUnit *rendering_unit = new zukou::RenderingUnit(&system_);
+      zukou::GlBaseTechnique *base_technique =
+          new zukou::GlBaseTechnique(&system_);
+
+      if (!rendering_unit->Init(&bounded_)) {
+        std::cerr << "Failed to initialize rendering_unit" << std::endl;
+        return;
+      }
+
+      if (!base_technique->Init(rendering_unit)) {
+        std::cerr << "Failed to initialize base_technique" << std::endl;
+        return;
+      }
+
+      zukou::GlVertexArray *vertex_array = new zukou::GlVertexArray(&system_);
+      if (!vertex_array->Init()) {
+        std::cerr << "Failed to initialize vertex_array" << std::endl;
+        return;
+      }
+
       const tinygltf::Primitive &primitive = mesh.primitives[i];
 
       if (primitive.indices < 0) return;
 
       tinygltf::Material material = model_->materials[primitive.material];
+
       int texture_index = material.pbrMetallicRoughness.baseColorTexture.index;
       // TODO: sampler setting
       if (texture_index >= 0) {
@@ -346,14 +333,8 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
             base_technique->Uniform(0, "Rotation", uniform_rotation);
           }
         }
-        std::cout << material.name << " ";
-        std::cout << std::endl;
       } else {
         // fragment shader
-        std::cout << "fragment shader: "
-                  << " ";
-        std::cout << material.name << " ";
-        std::cout << std::endl;
       }
 
       for (auto [attribute, index] : primitive.attributes) {
@@ -436,14 +417,15 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
                   << std::endl;
       }
 
+      base_technique->Bind(vertex_array);
+      base_technique->Bind(&program_);
+      base_technique->Uniform(0, "local_model", CalculateLocalModel());
+
       base_technique->DrawElements(mode, indexAccessor.count,
           indexAccessor.componentType, indexAccessor.byteOffset,
           gl_vertex_buffer_map_[indexAccessor.bufferView]);
     }
 
-    base_technique->Bind(vertex_array);
-    base_technique->Bind(&program_);
-    base_technique->Uniform(0, "local_model", CalculateLocalModel());
     bounded_.Commit();
   }
 
