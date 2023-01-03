@@ -5,6 +5,7 @@
 
 #include <cstring>
 #include <deque>
+#include <filesystem>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/quaternion.hpp>
@@ -16,20 +17,22 @@
 
 #include "gltf.fragment.h"
 #include "gltf.vertex.h"
+#include "jpeg-texture.h"
 #include "tiny_gltf.h"
 
 class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 {
  public:
-  Viewer(tinygltf::Model *model)
+  Viewer(tinygltf::Model *model, std::filesystem::path parent_dir)
       : system_(this),
         bounded_(&system_, this),
         pool_(&system_),
-        // vertex_array_(&system_),
         vertex_shader_(&system_),
         fragment_shader_(&system_),
         program_(&system_),
-        model_(model)
+        sampler_(&system_),
+        model_(model),
+        parent_dir_(parent_dir)
   {}
 
   bool Init(glm::vec3 half_size)
@@ -97,7 +100,13 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   zukou::GlShader fragment_shader_;
   zukou::GlProgram program_;
 
+  zukou::GlSampler sampler_;
+
   tinygltf::Model *model_;
+
+  std::filesystem::path parent_dir_;
+
+  std::unordered_map<int, JpegTexture *> texture_map_;
 
   std::deque<glm::mat4> matrix_stack_;
 
@@ -141,11 +150,15 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       return false;
     if (!fragment_shader_.Init(GL_FRAGMENT_SHADER, gltf_fragment_shader_source))
       return false;
-    if (!program_.Init()) return false;
 
+    if (!program_.Init()) return false;
     program_.AttachShader(&vertex_shader_);
     program_.AttachShader(&fragment_shader_);
     program_.Link();
+
+    if (!sampler_.Init()) return false;
+    sampler_.Parameteri(GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    sampler_.Parameteri(GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     for (int i = 0; i < (int)model_->bufferViews.size(); ++i) {
       const tinygltf::BufferView &bufferView = model_->bufferViews[i];
@@ -188,6 +201,20 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       }
       gl_vertex_buffer_map_[i]->Data(
           bufferView.target, vertex_buffer_map_[i], GL_STATIC_DRAW);
+    }
+
+    for (auto texture : model_->textures) {
+      JpegTexture *jpeg_texture = new JpegTexture(&system_);
+
+      std::filesystem::path path = parent_dir_;
+      auto image = model_->images[texture.source];
+      path /= image.uri;
+
+      if (!jpeg_texture->Init() || !jpeg_texture->Load(path.c_str())) {
+        std::cerr << "Failed to load jpeg texture" << std::endl;
+        return false;
+      }
+      texture_map_.emplace(texture.source, jpeg_texture);
     }
 
     return true;
@@ -267,6 +294,10 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   void RenderMesh(
       const tinygltf::Mesh &mesh, zukou::GlBaseTechnique *base_technique)
   {
+    std::cout << "[";
+    std::cout << mesh.name;
+    std::cout << "]";
+    std::cout << std::endl;
     zukou::GlVertexArray *vertex_array = new zukou::GlVertexArray(&system_);
     if (!vertex_array->Init()) {
       std::cerr << "Failed to initialize vertex_array" << std::endl;
@@ -277,6 +308,53 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
       const tinygltf::Primitive &primitive = mesh.primitives[i];
 
       if (primitive.indices < 0) return;
+
+      tinygltf::Material material = model_->materials[primitive.material];
+      int texture_index = material.pbrMetallicRoughness.baseColorTexture.index;
+      // TODO: sampler setting
+      if (texture_index >= 0) {
+        tinygltf::Texture texture = model_->textures[texture_index];
+        JpegTexture *jpeg_texture = texture_map_[texture.source];
+        jpeg_texture->GenerateMipmap(GL_TEXTURE_2D);
+        base_technique->Bind(
+            0, "in_texture", jpeg_texture, GL_TEXTURE_2D, &sampler_);
+
+        for (auto [extension, value] :
+            material.pbrMetallicRoughness.baseColorTexture.extensions) {
+          if (extension == "KHR_texture_transform") {
+            glm::vec2 uniform_offset(0.0f, 0.0f);
+            if (value.Has("offset")) {
+              auto offset = value.Get("offset");
+              uniform_offset[0] = offset.Get(0).GetNumberAsDouble();
+              uniform_offset[1] = offset.Get(1).GetNumberAsDouble();
+            }
+            base_technique->Uniform(0, "Offset", uniform_offset);
+
+            glm::vec2 uniform_scale(1.0f, 1.0f);
+            if (value.Has("scale")) {
+              auto scale = value.Get("scale");
+              uniform_scale[0] = scale.Get(0).GetNumberAsDouble();
+              uniform_scale[1] = scale.Get(1).GetNumberAsDouble();
+            }
+            base_technique->Uniform(0, "Scale", uniform_scale);
+
+            glm::vec1 uniform_rotation(0.0f);
+            if (value.Has("rotation")) {
+              auto rotation = value.Get("rotation");
+              uniform_rotation[0] = rotation.GetNumberAsDouble();
+            }
+            base_technique->Uniform(0, "Rotation", uniform_rotation);
+          }
+        }
+        std::cout << material.name << " ";
+        std::cout << std::endl;
+      } else {
+        // fragment shader
+        std::cout << "fragment shader: "
+                  << " ";
+        std::cout << material.name << " ";
+        std::cout << std::endl;
+      }
 
       for (auto [attribute, index] : primitive.attributes) {
         assert(index >= 0);
@@ -318,12 +396,11 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
         assert(byteStride != -1);
 
         assert(gl_vertex_buffer_map_.count(accessor.bufferView) > 0);
+        vertex_array->Enable(location);
         vertex_array->VertexAttribPointer(location, size,
             accessor.componentType, accessor.normalized ? GL_TRUE : GL_FALSE,
             byteStride, accessor.byteOffset,
             gl_vertex_buffer_map_[accessor.bufferView]);
-        vertex_array->Enable(location);
-        // unnecessary vertex_array
       }
 
       const tinygltf::Accessor &indexAccessor =
@@ -351,6 +428,12 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
           break;
         default:
           assert(0);
+      }
+
+      if (model_->bufferViews[indexAccessor.bufferView].target !=
+          GL_ELEMENT_ARRAY_BUFFER) {
+        std::cerr << "TODO: support other than gl_element_array_buffer"
+                  << std::endl;
       }
 
       base_technique->DrawElements(mode, indexAccessor.count,
@@ -411,7 +494,7 @@ main(int argc, char const *argv[])
     return EXIT_FAILURE;
   }
 
-  Viewer viewer(&model);
+  Viewer viewer(&model, std::filesystem::absolute(path).parent_path());
 
   glm::vec3 half_size(0.25, 0.25, 0.25);
 

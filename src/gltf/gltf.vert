@@ -9,10 +9,12 @@ layout(location = 1) in vec3 norm;
 layout(location = 2) in vec2 texcoord;
 
 out vec3 normal;
+out vec2 uv;
 
 void
 main()
 {
   gl_Position = zMVP * local_model * vec4(position, 1);
   normal = norm;
+  uv = texcoord;
 }

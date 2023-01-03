@@ -14,6 +14,7 @@ gltf_frag_glsl = custom_target(
 
 _sources = [
   '../../include/tiny_gltf.cc',
+  'jpeg-texture.cc',
   'main.cc',
   gltf_vert_glsl,
   gltf_frag_glsl,
@@ -22,6 +23,7 @@ _sources = [
 _viewer_dep = [
   glm_dep,
   zukou_dep,
+  jpeg_dep,
 ]
 
 executable(

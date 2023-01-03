@@ -29,6 +29,7 @@ wayland_req = '>= 1.18.0'
 
 glm_dep = dependency('glm')
 zukou_dep = dependency('zukou')
+jpeg_dep = dependency('libjpeg')
 
 pkgconfig = import('pkgconfig')
 
