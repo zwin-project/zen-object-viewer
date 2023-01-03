@@ -245,7 +245,7 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   void RenderNode(const tinygltf::Node &node)
   {
     if (node.matrix.size() == 16) {
-      // TODO: row major? column major?
+      // TODO: row major or column major
       matrix_stack_.push_back(glm::make_mat4(node.matrix.data()));
     } else {
       glm::mat4 mat(1);
@@ -407,7 +407,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
             byteStride, accessor.byteOffset,
             gl_vertex_buffer_map_[accessor.bufferView]);
       }
-
       base_technique->Bind(vertex_array);
 
       assert(primitive.indices >= 0);
