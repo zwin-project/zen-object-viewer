@@ -15,7 +15,8 @@
 #include <utility>
 #include <vector>
 
-#include "gltf.fragment.h"
+#include "gltf.color.fragment.h"
+#include "gltf.texture.fragment.h"
 #include "gltf.vertex.h"
 #include "jpeg-texture.h"
 #include "tiny_gltf.h"
@@ -28,8 +29,8 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
         bounded_(&system_, this),
         pool_(&system_),
         vertex_shader_(&system_),
-        fragment_shader_(&system_),
-        program_(&system_),
+        texture_fragment_shader_(&system_),
+        color_fragment_shader_(&system_),
         sampler_(&system_),
         model_(model),
         parent_dir_(parent_dir)
@@ -51,7 +52,7 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 
     bounded_.AckConfigure(serial);
 
-    matrix_stack_.push_back(glm::scale(glm::mat4(1), half_size));
+    matrix_stack_.push_back(glm::mat4(1));
 
     this->RenderScene();
 
@@ -92,8 +93,9 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   std::unordered_map<int, zukou::GlBuffer *> gl_vertex_buffer_map_;
 
   zukou::GlShader vertex_shader_;
-  zukou::GlShader fragment_shader_;
-  zukou::GlProgram program_;
+  zukou::GlShader texture_fragment_shader_;
+  zukou::GlShader color_fragment_shader_;
+  std::unordered_map<std::string, zukou::GlProgram *> program_map_;
 
   zukou::GlSampler sampler_;
 
@@ -143,13 +145,28 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 
     if (!vertex_shader_.Init(GL_VERTEX_SHADER, gltf_vertex_shader_source))
       return false;
-    if (!fragment_shader_.Init(GL_FRAGMENT_SHADER, gltf_fragment_shader_source))
+    if (!texture_fragment_shader_.Init(
+            GL_FRAGMENT_SHADER, gltf_texture_fragment_shader_source))
+      return false;
+    if (!color_fragment_shader_.Init(
+            GL_FRAGMENT_SHADER, gltf_color_fragment_shader_source))
       return false;
 
-    if (!program_.Init()) return false;
-    program_.AttachShader(&vertex_shader_);
-    program_.AttachShader(&fragment_shader_);
-    program_.Link();
+    program_map_["texture"] = new zukou::GlProgram(&system_);
+    if (!program_map_["texture"]->Init()) {
+      return false;
+    }
+    program_map_["texture"]->AttachShader(&vertex_shader_);
+    program_map_["texture"]->AttachShader(&texture_fragment_shader_);
+    program_map_["texture"]->Link();
+
+    program_map_["color"] = new zukou::GlProgram(&system_);
+    if (!program_map_["color"]->Init()) {
+      return false;
+    }
+    program_map_["color"]->AttachShader(&vertex_shader_);
+    program_map_["color"]->AttachShader(&color_fragment_shader_);
+    program_map_["color"]->Link();
 
     if (!sampler_.Init()) return false;
     sampler_.Parameteri(GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -293,8 +310,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 
       const tinygltf::Primitive &primitive = mesh.primitives[i];
 
-      if (primitive.indices < 0) return;
-
       tinygltf::Material material = model_->materials[primitive.material];
 
       int texture_index = material.pbrMetallicRoughness.baseColorTexture.index;
@@ -315,7 +330,7 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
               uniform_offset[0] = offset.Get(0).GetNumberAsDouble();
               uniform_offset[1] = offset.Get(1).GetNumberAsDouble();
             }
-            base_technique->Uniform(0, "Offset", uniform_offset);
+            base_technique->Uniform(0, "in_offset", uniform_offset);
 
             glm::vec2 uniform_scale(1.0f, 1.0f);
             if (value.Has("scale")) {
@@ -323,18 +338,27 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
               uniform_scale[0] = scale.Get(0).GetNumberAsDouble();
               uniform_scale[1] = scale.Get(1).GetNumberAsDouble();
             }
-            base_technique->Uniform(0, "Scale", uniform_scale);
+            base_technique->Uniform(0, "in_scale", uniform_scale);
 
             glm::vec1 uniform_rotation(0.0f);
             if (value.Has("rotation")) {
               auto rotation = value.Get("rotation");
               uniform_rotation[0] = rotation.GetNumberAsDouble();
             }
-            base_technique->Uniform(0, "Rotation", uniform_rotation);
+            base_technique->Uniform(0, "in_rotation", uniform_rotation);
           }
         }
+
+        base_technique->Bind(program_map_["texture"]);
       } else {
-        // fragment shader
+        assert(material.pbrMetallicRoughness.baseColorFactor.size() == 4);
+
+        auto base_color = material.pbrMetallicRoughness.baseColorFactor;
+
+        base_technique->Uniform(0, "in_base_color",
+            glm::vec4(
+                base_color[0], base_color[1], base_color[2], base_color[3]));
+        base_technique->Bind(program_map_["color"]);
       }
 
       for (auto [attribute, index] : primitive.attributes) {
@@ -384,6 +408,9 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
             gl_vertex_buffer_map_[accessor.bufferView]);
       }
 
+      base_technique->Bind(vertex_array);
+
+      assert(primitive.indices >= 0);
       const tinygltf::Accessor &indexAccessor =
           model_->accessors[primitive.indices];
 
@@ -417,8 +444,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
                   << std::endl;
       }
 
-      base_technique->Bind(vertex_array);
-      base_technique->Bind(&program_);
       base_technique->Uniform(0, "local_model", CalculateLocalModel());
 
       base_technique->DrawElements(mode, indexAccessor.count,
@@ -478,7 +503,7 @@ main(int argc, char const *argv[])
 
   Viewer viewer(&model, std::filesystem::absolute(path).parent_path());
 
-  glm::vec3 half_size(0.25, 0.25, 0.25);
+  glm::vec3 half_size(1.0, 1.0, 1.0);
 
   if (!viewer.Init(half_size)) {
     std::cerr << "system init error" << std::endl;

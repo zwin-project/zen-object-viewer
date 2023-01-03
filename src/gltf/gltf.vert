@@ -8,13 +8,13 @@ layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 norm;
 layout(location = 2) in vec2 texcoord;
 
-out vec3 normal;
-out vec2 uv;
+out vec3 in_normal;
+out vec2 in_uv;
 
 void
 main()
 {
   gl_Position = zMVP * local_model * vec4(position, 1);
-  normal = norm;
-  uv = texcoord;
+  in_normal = norm;
+  in_uv = texcoord;
 }
