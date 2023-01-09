@@ -30,6 +30,7 @@ wayland_req = '>= 1.18.0'
 glm_dep = dependency('glm')
 zukou_dep = dependency('zukou')
 jpeg_dep = dependency('libjpeg')
+png_dep = dependency('libpng')
 
 pkgconfig = import('pkgconfig')
 
@@ -42,4 +43,5 @@ configure_file(
   configuration: cdata,
 )
 
+subdir('shaders')
 subdir('src')
