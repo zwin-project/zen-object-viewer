@@ -1,5 +1,5 @@
 project(
-  'zen object viewer', 'c', 'cpp',
+  'zen-object-viewer', 'c', 'cpp',
   version: '0.0.1',
   license: 'MIT',
   meson_version: '>= 0.58.0',
@@ -37,6 +37,10 @@ pkgconfig = import('pkgconfig')
 textify = files('tools/textify.sh')[0]
 
 public_inc = include_directories('include')
+
+datadir = get_option('datadir')
+install_subdir('assets', install_dir: get_option('datadir') / meson.project_name())
+cdata.set_quoted('ZEN_OBJECT_VIEWER_ASSET_DIR', get_option('prefix') / get_option('datadir') / meson.project_name() / 'assets')
 
 configure_file(
   output: 'config.h',

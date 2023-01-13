@@ -18,6 +18,7 @@ _viewer_dep = [
 executable(
   'zen-object-viewer',
   _sources,
+  cpp_args: ['-include', 'config.h'],
   install: true,
   dependencies: [ _viewer_dep ],
 )
