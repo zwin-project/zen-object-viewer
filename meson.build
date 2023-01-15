@@ -1,6 +1,6 @@
 project(
   'zen-object-viewer', 'c', 'cpp',
-  version: '0.0.1',
+  version: '0.1.0',
   license: 'MIT',
   meson_version: '>= 0.58.0',
   default_options: ['warning_level=3', 'werror=true', 'optimization=2', 'c_std=gnu11', 'cpp_std=gnu++17'],
@@ -25,10 +25,10 @@ foreach arg : global_args_maybe
 endforeach
 add_project_arguments(global_args, language: 'cpp')
 
-wayland_req = '>= 1.18.0'
+zukou_req = '0.1.0'
 
 glm_dep = dependency('glm')
-zukou_dep = dependency('zukou')
+zukou_dep = dependency('zukou', version: zukou_req)
 
 pkgconfig = import('pkgconfig')
 
