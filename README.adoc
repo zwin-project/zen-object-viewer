@@ -4,24 +4,24 @@
 
 [source, shell]
 ----
-$ git clone https://github.com/zigen-project/zen.git
-$ cd zen
+$ git clone https://github.com/zwin-project/zen-object-viewer.git
+$ cd zen-object-viewer
 $ meson build
 $ ninja -C build install
 ----
 
 == Run
 
-=== STL File viewer
+=== View STL File
 
 [source, shell]
 ----
-$ zen-stl-viewer [STL FILE]
+$ zen-object-viewer [STL FILE]
 ----
 
 [source, shell]
 ----
-$ zen-stl-viewer ./assets/teapot.stl
+$ zen-object-viewer ./assets/teapot.stl
 ----
 
-You can move the model by `left click + motion`
+You can move the model by `scroll`
