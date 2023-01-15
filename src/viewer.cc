@@ -1,6 +1,5 @@
 #include "viewer.h"
 
-#include <linux/input.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -41,13 +40,16 @@ Viewer::~Viewer()
 }
 
 bool
-Viewer::Init(float radius, glm::mat4 transform)
+Viewer::Init(std::string &title, float radius, glm::mat4 transform)
 {
   radius_ = radius;
   transform_ = transform;
 
   if (!system_.Init()) return false;
   if (!bounded_.Init(glm::vec3(radius))) return false;
+
+  bounded_.SetTitle(title);
+
   return true;
 }
 
@@ -175,20 +177,6 @@ Viewer::RayLeave(uint32_t /*serial*/, zukou::VirtualObject * /*virtual_object*/)
   base_technique_.Uniform(0, "focus_color_diff", glm::vec3(0));
   bounded_.Commit();
 };
-
-void
-Viewer::RayButton(
-    uint32_t serial, uint32_t /*time*/, uint32_t button, bool pressed)
-{
-  if (button == BTN_LEFT && pressed) {
-    bounded_.Move(serial);
-  }
-};
-
-void
-Viewer::RayMotion(
-    uint32_t /*time*/, glm::vec3 /*origin*/, glm::vec3 /*direction*/)
-{}
 
 void
 Viewer::RayAxisFrame(const zukou::RayAxisEvent &event)

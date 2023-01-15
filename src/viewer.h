@@ -26,7 +26,7 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
   Viewer();
   ~Viewer();
 
-  bool Init(float radius, glm::mat4 transform);
+  bool Init(std::string& title, float radius, glm::mat4 transform);
 
   bool Load(std::string path);
 
@@ -37,12 +37,6 @@ class Viewer : public zukou::IBoundedDelegate, public zukou::ISystemDelegate
 
   void RayLeave(
       uint32_t /*serial*/, zukou::VirtualObject* /*virtual_object*/) override;
-
-  void RayMotion(uint32_t /*time*/, glm::vec3 /*origin*/,
-      glm::vec3 /*direction*/) override;
-
-  void RayButton(uint32_t serial, uint32_t /*time*/, uint32_t button,
-      bool pressed) override;
 
   void RayAxisFrame(const zukou::RayAxisEvent& /*event*/) override;
 

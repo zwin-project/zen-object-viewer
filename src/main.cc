@@ -5,12 +5,28 @@
 #include "viewer.h"
 
 std::string
-ExtractExtension(std::string &filename)
+ExtractFilename(std::string &path)
 {
   std::string extension = "";
-  for (int i = filename.size() - 2; i >= 0; --i) {
-    if (filename[i] == '.') {
-      extension = filename.substr(i + 1);
+  for (int i = path.size() - 2; i >= 0; --i) {
+    if (path[i] == '/') {
+      extension = path.substr(i + 1);
+      break;
+    }
+  }
+
+  assert(extension != "");
+
+  return extension;
+}
+
+std::string
+ExtractExtension(std::string &path)
+{
+  std::string extension = "";
+  for (int i = path.size() - 2; i >= 0; --i) {
+    if (path[i] == '.') {
+      extension = path.substr(i + 1);
       break;
     }
   }
@@ -25,6 +41,7 @@ main(int argc, char const *argv[])
 {
   Viewer viewer;
   std::string path = ZEN_OBJECT_VIEWER_ASSET_DIR "/default_text.stl";
+  std::string name = "Zen Object Viewer";
   float radius = 0.125;
   glm::mat4 transform =
       glm::rotate(glm::mat4(1), -(float)M_PI / 2, glm::vec3(0, 1, 0));
@@ -32,6 +49,7 @@ main(int argc, char const *argv[])
   if (argc >= 2) {
     path = argv[1];
     transform = glm::mat4(1);
+    name = ExtractFilename(path);
   }
 
   auto extension = ExtractExtension(path);
@@ -41,7 +59,7 @@ main(int argc, char const *argv[])
     return EXIT_FAILURE;
   }
 
-  if (!viewer.Init(radius, transform)) {
+  if (!viewer.Init(name, radius, transform)) {
     std::cerr << "Failed to initialize viewer." << std::endl;
     return EXIT_FAILURE;
   }

@@ -29,14 +29,10 @@ wayland_req = '>= 1.18.0'
 
 glm_dep = dependency('glm')
 zukou_dep = dependency('zukou')
-jpeg_dep = dependency('libjpeg')
-png_dep = dependency('libpng')
 
 pkgconfig = import('pkgconfig')
 
 textify = files('tools/textify.sh')[0]
-
-public_inc = include_directories('include')
 
 datadir = get_option('datadir')
 install_subdir('assets', install_dir: get_option('datadir') / meson.project_name())
