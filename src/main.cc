@@ -7,17 +7,17 @@
 std::string
 ExtractFilename(std::string &path)
 {
-  std::string extension = "";
+  std::string filename = "";
   for (int i = path.size() - 2; i >= 0; --i) {
     if (path[i] == '/') {
-      extension = path.substr(i + 1);
+      filename = path.substr(i + 1);
       break;
     }
   }
 
-  assert(extension != "");
+  if (filename == "") return path;
 
-  return extension;
+  return filename;
 }
 
 std::string
